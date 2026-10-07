@@ -101,6 +101,31 @@ def test_interactive_ui_is_available(tmp_path: Path) -> None:
     assert "<form id=\"create-form\">" in response.text
 
 
+def test_interactive_ui_renders_analytics_as_an_accessible_table(tmp_path: Path) -> None:
+    client = _build_client(tmp_path)
+    response = client.get("/ui")
+
+    assert response.status_code == 200
+    assert '<div id="analytics-result"' in response.text
+    assert "<caption>Link analytics</caption>" in response.text
+    assert response.text.count('scope="row"') == 4
+    for value_id in (
+        "analytics-short-code",
+        "analytics-total-clicks",
+        "analytics-unique-visitors",
+        "analytics-last-accessed-at",
+    ):
+        assert f'id="{value_id}"' in response.text
+
+    assert "analyticsShortCode.textContent" in response.text
+    assert "analyticsTotalClicks.textContent" in response.text
+    assert "analyticsUniqueVisitors.textContent" in response.text
+    assert "analyticsLastAccessedAt.textContent" in response.text
+    assert 'data.last_accessed_at === null ? "Never"' in response.text
+    assert "await fetchAnalytics(code);" in response.text
+    assert "fetchAndRender(`/api/v1/analytics/${code}`)" not in response.text
+
+
 def test_auth_is_required_for_api_calls(tmp_path: Path) -> None:
     client = _build_client(tmp_path)
     response = client.post("/api/v1/shorten", json={"url": "https://example.com/secure"})

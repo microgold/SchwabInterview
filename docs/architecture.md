@@ -68,6 +68,44 @@ The repository also includes an agentic SDLC orchestration engine that models go
 
 ## Agentic Orchestration Model
 
+![Agentic orchestration workflow](orchestration-architecture.png)
+
+The repository provides two orchestration paths with different purposes:
+
+- [`orchestrator/sample_workflows.py`](../orchestrator/sample_workflows.py) contains deterministic
+  greenfield, brownfield, and ambiguous scenarios. They exercise orchestration controls without
+  modifying application code.
+- [`orchestrator/real_workflow.py`](../orchestrator/real_workflow.py) connects those concepts to real
+  engineering work. It invokes Codex for structured requirements, impact analysis, staged
+  implementation, and independent review; deterministic tools perform test and compilation
+  validation before a human-approved promotion.
+
+The URL shortener remains the engineering product. The orchestration layer is a separate control
+plane that can produce a bounded, reviewable change to that product; it is not involved when the
+URL-shortening API handles normal requests.
+
+### How to Read the Diagram
+
+The workflow definition and run context enter the `WorkflowEngine`, which uses the DAG scheduler to select every pending node whose dependencies have succeeded. Those ready nodes can execute concurrently up to the configured `max_parallelism`; in the illustrated greenfield flow, testing and documentation run in parallel after implementation and must both complete before release.
+
+Before a protected node runs, the engine evaluates its human-approval checkpoint and configured guardrails. The release stage is allowed only when approval is present and both the security and compliance checks have passed. A denied checkpoint or failed guardrail blocks progress and is recorded in the workflow event stream.
+
+Each successful node publishes versioned artifacts for downstream consumers. When an upstream artifact changes, completed dependents that observed an older version are marked pending and re-queued, producing the diagram's replan loop. Execution failures follow a bounded recovery path: retry according to `RetryPolicy`, use a fallback when one is defined, and invoke rollback after a terminal failure. A safe-stop request halts scheduling deterministically.
+
+At completion, the engine returns a `WorkflowReport` containing the final status, accumulated context, timestamped events, and reliability metrics such as success rate, retry and rollback counts, MTTR, and end-to-end latency.
+
+### Real-Workflow Safety Boundary
+
+The real workflow never gives an implementation agent direct access to the source checkout. It copies
+the repository into a temporary staging workspace, snapshots file hashes, and compares the result
+against an explicit path allowlist. Deletions or out-of-scope modifications fail the workflow and are
+not promoted. Real tests and compilation checks run in staging, followed by a separate read-only review.
+Only an approved set of validated files is copied back; the workflow does not commit, push, or deploy.
+
+Each Codex call uses a JSON output schema and writes its prompt, structured response, standard output,
+and standard error to the run audit directory. The final report combines that evidence with workflow
+events, approvals, changed paths, validation results, review findings, and reliability metrics.
+
 ### Dependency Graph and Non-Linear Execution
 
 Each workflow node declares:
